@@ -32,7 +32,7 @@ fn bench_push(c: &mut Criterion) {
             b.iter(|| {
                 let mut orderer: Orderer<U32> = Orderer::new();
                 for i in 0..size as u32 {
-                    black_box(orderer.push(U32(i)));
+                    orderer.push(U32(i), |e| {black_box(e);});
                 }
             });
         });
@@ -44,7 +44,7 @@ fn bench_push(c: &mut Criterion) {
             b.iter(|| {
                 let mut orderer: Orderer<U32> = Orderer::new();
                 for v in seq.iter().cloned() {
-                    black_box(orderer.push(v));
+                    orderer.push(v, |e| {black_box(e);});
                 }
             });
         });
@@ -57,7 +57,7 @@ fn bench_push(c: &mut Criterion) {
             b.iter(|| {
                 let mut orderer: Orderer<U32> = Orderer::new();
                 for v in seq.iter().cloned() {
-                    black_box(orderer.push(v));
+                    orderer.push(v, |e| {black_box(e);});
                 }
             });
         });

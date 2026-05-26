@@ -57,7 +57,8 @@ impl<T: PartialOrd + Ord + Orderable> Orderer<T> {
         }
     }
 
-    /// Inserts `value` into the buffer or returns it if it is well ordered.
+    /// Inserts `value` into the buffer or returns it if it is well ordered
+    /// through the closure named pipe.
     ///
     /// If `value` is the logically next element in the sequence, it is returned immediately. More
     /// than one element might be returned if there are buffered elements that become sequential with
@@ -65,7 +66,7 @@ impl<T: PartialOrd + Ord + Orderable> Orderer<T> {
     ///
     /// If `value` is not the logically next element in the sequence, it is buffered until it is
     /// sequential or `flush` is called.
-    pub fn push(&mut self, value: T) -> Vec<T> {
+    pub fn push(&mut self, value: T, mut pipe: impl FnMut(T)) {
         if self
             .next_expected_index
             .map(|index| index == value.index())
@@ -75,9 +76,9 @@ impl<T: PartialOrd + Ord + Orderable> Orderer<T> {
 
             self.next_expected_index = Some(value.index().overflowing_add(1).0);
 
-            let mut values = vec![value];
-            values.append(&mut self.flush_sequential());
-            values
+            // The value is the expected one, and is returned by the closure directly
+            pipe(value);
+            self.flush_sequential(&mut pipe);
         } else {
             // Slow path: `value` must be inserted into the buffer.
 
@@ -85,7 +86,7 @@ impl<T: PartialOrd + Ord + Orderable> Orderer<T> {
                 self.buffer.insert(i, value);
             }
 
-            self.flush_sequential()
+            self.flush_sequential(&mut pipe)
         }
     }
 
@@ -104,7 +105,7 @@ impl<T: PartialOrd + Ord + Orderable> Orderer<T> {
 
     // Flushes the elements in the buffer which are sequential and without gaps, starting at
     // `self.next_expected_index`.
-    fn flush_sequential(&mut self) -> Vec<T> {
+    fn flush_sequential(&mut self, pipe: impl FnMut(T)) {
         // Count how many elements can be drained from the buffer.
         let count = self
             .buffer
@@ -124,7 +125,7 @@ impl<T: PartialOrd + Ord + Orderable> Orderer<T> {
             })
             .count();
 
-        self.buffer.drain(..count).collect()
+        self.buffer.drain(..count).for_each(pipe)
     }
 }
 
@@ -144,12 +145,15 @@ mod test {
         let mut orderer = Orderer::new();
 
         // Assert that well ordered elements are returned immediately.
-        assert_eq!(orderer.push(0), [0]);
-
+        let mut out = vec![]; orderer.push(0, |e| out.push(e));
+        assert_eq!(out, [0]);
         // Assert that unordered elements are buffered and released once sequential.
-        assert_eq!(orderer.push(3), []);
-        assert_eq!(orderer.push(2), []);
-        assert_eq!(orderer.push(1), [1, 2, 3]);
+        let mut out = vec![]; orderer.push(3, |e| out.push(e));
+        assert_eq!(out, []);
+        let mut out = vec![]; orderer.push(2, |e| out.push(e));
+        assert_eq!(out, []);
+        let mut out = vec![]; orderer.push(1, |e| out.push(e));
+        assert_eq!(out, [1, 2, 3]);
     }
 
     #[test]
@@ -158,11 +162,11 @@ mod test {
 
         // The first element is not buffered. The next elements are because they don't match the
         // next expected index.
-        orderer.push(0);
-        orderer.push(5);
-        orderer.push(4);
-        orderer.push(3);
-        orderer.push(2);
+        orderer.push(0, |_| ());
+        orderer.push(5, |_| ());
+        orderer.push(4, |_| ());
+        orderer.push(3, |_| ());
+        orderer.push(2, |_| ());
 
         // Assert that flush returns the buffered elements in sorted order.
         assert_eq!(orderer.flush(), [2, 3, 4, 5]);
@@ -188,8 +192,8 @@ mod test {
         };
 
         let mut retrieved_sequence = vec![];
-        for v in &insertion_sequence {
-            retrieved_sequence.append(&mut orderer.push(*v));
+        for &v in &insertion_sequence {
+            orderer.push(v, |e| {retrieved_sequence.push(e);});
         }
 
         // Assert that the order did not change.
@@ -201,7 +205,7 @@ mod test {
         let mut orderer = Orderer::new();
 
         let mut retrieved_sequence = vec![];
-        retrieved_sequence.append(&mut orderer.push(0));
+        orderer.push(0, |e| {retrieved_sequence.push(e);});
 
         // Create a sequence where the elements are reversed in chunks of 16.
         let insertion_sequence: Vec<u32> = (1..200)
@@ -215,7 +219,7 @@ mod test {
 
         // Push `insertion_seq` into the data structure and retrieve it into `retrieved_seq`.
         for el in insertion_sequence {
-            retrieved_sequence.append(&mut orderer.push(el));
+            orderer.push(el, |e| {retrieved_sequence.push(e);});
         }
         retrieved_sequence.append(&mut orderer.flush());
 
@@ -257,14 +261,20 @@ mod test {
             element: vec![9, 10, 11, 12, 13, 14, 15, 16],
         };
 
-        assert_eq!(orderer.push(element0.clone()), vec![element0]); // Returns inmediately
 
-        assert_eq!(orderer.push(element2.clone()), vec![]);
-        assert_eq!(orderer.push(element1.clone()), vec![element1, element2]);
+        let mut out = vec![]; orderer.push(element0.clone(), |e| out.push(e));
+        assert_eq!(out, vec![element0]); // Returns inmediately
+
+        let mut out = vec![]; orderer.push(element2.clone(), |e| out.push(e));
+        assert_eq!(out, vec![]);
+        let mut out = vec![]; orderer.push(element1.clone(), |e| out.push(e));
+        assert_eq!(out, vec![element1, element2]);
 
         // Buffered because element 3 is missing
-        assert_eq!(orderer.push(element5.clone()), vec![]);
-        assert_eq!(orderer.push(element4.clone()), vec![]);
+        let mut out = vec![]; orderer.push(element4.clone(), |e| out.push(e));
+        assert_eq!(out, vec![]);
+        let mut out = vec![]; orderer.push(element5.clone(), |e| out.push(e));
+        assert_eq!(out, vec![]);
 
         assert_eq!(orderer.flush(), vec![element4, element5]);
 
