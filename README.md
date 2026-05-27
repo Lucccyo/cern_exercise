@@ -68,3 +68,107 @@ This is because creating an array with every `push` takes time, particularly for
 | reversed | 10M | 287 ms | 35 Melem/s | -9.9% ✓ | +11.1% ✓ |
 
 
+#### Usage of VeqDeque instead of BTreeSet
+
+This optimization is not in the source code because it is an improvement I tested, but it was not particularly satisfactory.
+We perform an insertion into the buffer, which is a `VecDeque`, and this moves all the elements in memory because the `VecDeque` structure is contiguous.
+To prevent values from being moved in memory, I wanted to replace the vector with a `BTreeSet`. This tree structure supports fast insertions and does not require moving all values, since the values are scattered throughout memory.
+However, the benchmarks showed a regression across most tests.
+As memory loads data in blocks, the vec is loaded in its entirety, whereas with the `BTreeSet`, iterating over the data in `flush_sequential` is more expensive because the data must be loaded into memory several times as it is scattered across memory, whereas the `VecDeque` is loaded only once.
+
+```
+Benchmarking orderer_push/ordered/100: Collecting 100 samples in estimated orderer_push/ordered/100
+                        time:   [95.955 ns 96.100 ns 96.258 ns]
+                        thrpt:  [1.0389 Gelem/s 1.0406 Gelem/s 1.0422 Gelem/s]
+                 change:
+                        time:   [-52.738% -52.473% -52.188%] (p = 0.00 < 0.05)
+                        thrpt:  [+109.15% +110.41% +111.59%]
+                        Performance has improved.
+Found 4 outliers among 100 measurements (4.00%)
+  2 (2.00%) high mild
+  2 (2.00%) high severe
+Benchmarking orderer_push/mostly_ordered_w16/100: Collecting 100 samples inorderer_push/mostly_ordered_w16/100
+                        time:   [1.0730 µs 1.0743 µs 1.0756 µs]
+                        thrpt:  [92.969 Melem/s 93.085 Melem/s 93.196 Melem/s]
+                 change:
+                        time:   [-29.804% -29.531% -29.276%] (p = 0.00 < 0.05)
+                        thrpt:  [+41.395% +41.907% +42.459%]
+                        Performance has improved.
+Found 3 outliers among 100 measurements (3.00%)
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+Benchmarking orderer_push/reversed/100: Collecting 100 samples in estimatedorderer_push/reversed/100
+                        time:   [1.0281 µs 1.0296 µs 1.0310 µs]
+                        thrpt:  [96.998 Melem/s 97.129 Melem/s 97.271 Melem/s]
+                 change:
+                        time:   [+10.024% +11.151% +11.852%] (p = 0.00 < 0.05)
+                        thrpt:  [-10.596% -10.032% -9.1104%]
+                        Performance has regressed.
+Found 3 outliers among 100 measurements (3.00%)
+  1 (1.00%) low mild
+  2 (2.00%) high mild
+Benchmarking orderer_push/ordered/1000: Collecting 100 samples in estimatedorderer_push/ordered/1000
+                        time:   [877.37 ns 878.69 ns 880.28 ns]
+                        thrpt:  [1.1360 Gelem/s 1.1381 Gelem/s 1.1398 Gelem/s]
+                 change:
+                        time:   [-54.785% -54.621% -54.403%] (p = 0.00 < 0.05)
+                        thrpt:  [+119.31% +120.37% +121.17%]
+                        Performance has improved.
+Found 9 outliers among 100 measurements (9.00%)
+  3 (3.00%) high mild
+  6 (6.00%) high severe
+Benchmarking orderer_push/mostly_ordered_w16/1000: Collecting 100 samples iorderer_push/mostly_ordered_w16/1000
+                        time:   [22.899 µs 22.976 µs 23.115 µs]
+                        thrpt:  [43.261 Melem/s 43.523 Melem/s 43.669 Melem/s]
+                 change:
+                        time:   [+12.078% +12.514% +12.916%] (p = 0.00 < 0.05)
+                        thrpt:  [-11.438% -11.122% -10.776%]
+                        Performance has regressed.
+Found 6 outliers among 100 measurements (6.00%)
+  1 (1.00%) low mild
+  3 (3.00%) high mild
+  2 (2.00%) high severe
+Benchmarking orderer_push/reversed/1000: Collecting 100 samples in estimateorderer_push/reversed/1000
+                        time:   [16.538 µs 16.558 µs 16.589 µs]
+                        thrpt:  [60.280 Melem/s 60.392 Melem/s 60.468 Melem/s]
+                 change:
+                        time:   [+52.318% +53.894% +57.152%] (p = 0.00 < 0.05)
+                        thrpt:  [-36.368% -35.020% -34.348%]
+                        Performance has regressed.
+Found 11 outliers among 100 measurements (11.00%)
+  1 (1.00%) low severe
+  5 (5.00%) high mild
+  5 (5.00%) high severe
+Benchmarking orderer_push/ordered/10000: Collecting 100 samples in estimateorderer_push/ordered/10000
+                        time:   [8.7906 µs 8.7953 µs 8.8005 µs]
+                        thrpt:  [1.1363 Gelem/s 1.1370 Gelem/s 1.1376 Gelem/s]
+                 change:
+                        time:   [-54.971% -54.816% -54.675%] (p = 0.00 < 0.05)
+                        thrpt:  [+120.63% +121.32% +122.08%]
+                        Performance has improved.
+Found 5 outliers among 100 measurements (5.00%)
+  3 (3.00%) high mild
+  2 (2.00%) high severe
+Benchmarking orderer_push/mostly_ordered_w16/10000: Collecting 100 samples orderer_push/mostly_ordered_w16/10000
+                        time:   [398.94 µs 399.19 µs 399.47 µs]
+                        thrpt:  [25.033 Melem/s 25.051 Melem/s 25.066 Melem/s]
+                 change:
+                        time:   [+101.75% +103.24% +104.40%] (p = 0.00 < 0.05)
+                        thrpt:  [-51.075% -50.798% -50.433%]
+                        Performance has regressed.
+Found 8 outliers among 100 measurements (8.00%)
+  1 (1.00%) low mild
+  5 (5.00%) high mild
+  2 (2.00%) high severe
+Benchmarking orderer_push/reversed/10000: Collecting 100 samples in estimatorderer_push/reversed/10000
+                        time:   [179.33 µs 179.46 µs 179.59 µs]
+                        thrpt:  [55.682 Melem/s 55.723 Melem/s 55.763 Melem/s]
+                 change:
+                        time:   [+32.511% +32.970% +33.429%] (p = 0.00 < 0.05)
+                        thrpt:  [-25.054% -24.795% -24.535%]
+                        Performance has regressed.
+Found 4 outliers among 100 measurements (4.00%)
+  1 (1.00%) high mild
+  3 (3.00%) high severe
+```
+
