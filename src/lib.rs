@@ -79,7 +79,11 @@ impl<T: PartialOrd + Ord + Orderable> Orderer<T> {
             // The value is the expected one, and is returned by the closure directly
             pipe(value);
             self.flush_sequential(&mut pipe);
-        } else {
+        } else if self.next_expected_index.map(|index| index > value.index()).unwrap_or(true)
+        {
+            return
+        }
+        else {
             // Slow path: `value` must be inserted into the buffer.
 
             if let Err(i) = self.buffer.binary_search(&value) {
@@ -281,5 +285,28 @@ mod test {
         // Assert that the internal buffer is now empty
         assert_eq!(orderer.buffered_count(), 0);
         assert!(orderer.next_expected_index.is_none());
+    }
+
+    #[test]
+    #[should_panic]
+    fn duplicated_indices() {
+        let mut orderer = Orderer::new();
+
+        let element0 = Element {
+            time: 0,
+            index: 0,
+            element: vec![0, 1, 2],
+        };
+        let element1 = Element {
+            time: 10,
+            index: 0,
+            element: vec![3, 4],
+        };
+
+        let mut out = vec![]; orderer.push(element0.clone(), |e| out.push(e));
+        assert_eq!(out, vec![element0]); // Returns inmediately
+
+        let mut out = vec![];
+        orderer.push(element1.clone(), |e| out.push(e));
     }
 }
