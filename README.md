@@ -97,3 +97,25 @@ In the benchmarks, it is not straightforward to explain the huge gains (e.g., th
 | reversed | 1M | 443 µs | 2.26 Gelem/s | -98.1% ✓ | +5210% ✓ |
 | reversed | 10M | 4.76 ms | 2.10 Gelem/s | -98.3% ✓ | +5943% ✓ |
 
+
+#### Use `flush_sequential` only when needed
+Previously, `flush_sequential` was called at the end of every `push` call, whether in the fast or slow case.
+Rather than doing this systematically, I have added a `min_buffer_index` variable to the `Orderer` structure to keep track of the smallest element in the buffer.
+If the element added to the structure is the expected one, `next_expected_index` is incremented, and if `min_buffer_index` is equal to `next_expected_index`, then `flush_sequential` is useful. Otherwise, we add to the buffer, potentially out of order, and update `min_buffer_index` if the new value is lower. There is therefore no longer any need to keep the buffer sorted at all times; we now sort it only during flushes.
+
+The benchmarks appear consistent because `ordered` improves significantly as we never enter `flush_sequential` anymore since the elements arrive in order; `mostly_ordered` is also consistent with a smaller gain, as we do enter it a little. `reversed` is not much more efficient because all the values still end up in the buffer anyway.
+
+| Benchmark | Size | Time | Throughput | Time gain | Flow rate gain |
+|-----------|------|------|------------|-----------|----------------|
+| ordered | 10k | 4.69 µs | 2.13 Gelem/s | -77.5% ✓ | +345% ✓ |
+| ordered | 100k | 48.6 µs | 2.06 Gelem/s | -77.2% ✓ | +338% ✓ |
+| ordered | 1M | 508 µs | 1.97 Gelem/s | -76.8% ✓ | +331% ✓ |
+| ordered | 10M | 5.39 ms | 1.85 Gelem/s | -75.6% ✓ | +309% ✓ |
+| mostly_ordered_w16 | 10k | 43.8 µs | 228 Melem/s | -43.1% ✓ | +75.7% ✓ |
+| mostly_ordered_w16 | 100k | 406 µs | 246 Melem/s | -48.2% ✓ | +93.1% ✓ |
+| mostly_ordered_w16 | 1M | 3.97 ms | 252 Melem/s | -51.1% ✓ | +104% ✓ |
+| mostly_ordered_w16 | 10M | 40.7 ms | 245 Melem/s | -51.1% ✓ | +105% ✓ |
+| reversed | 10k | 4.21 µs | 2.38 Gelem/s | -1.5% ✓ | +1.5% ✓ |
+| reversed | 100k | 42.4 µs | 2.36 Gelem/s | -2.5% ✓ | +2.6% ✓ |
+| reversed | 1M | 434 µs | 2.30 Gelem/s | -2.4% ✓ | +2.5% ✓ |
+| reversed | 10M | 4.63 ms | 2.16 Gelem/s | -2.7% ✓ | +2.8% ✓ |
