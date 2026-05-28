@@ -120,3 +120,8 @@ The benchmarks appear consistent because `ordered` improves significantly as we 
 | reversed | 100k | 42.4 µs | 2.36 Gelem/s | -2.5% ✓ | +2.6% ✓ |
 | reversed | 1M | 434 µs | 2.30 Gelem/s | -2.4% ✓ | +2.5% ✓ |
 | reversed | 10M | 4.63 ms | 2.16 Gelem/s | -2.7% ✓ | +2.8% ✓ |
+
+#### Adding tests
+I added two tests to ensure that my changes don't break anything else.
+- `test_duplicated_indices` verifies that the process terminates silently when an index smaller than the value of `next_expected_index` is added.
+- `test_duplicate_in_buffer` verifies that if two identical indices are added to the buffer, the duplicates are properly deduplicated.
