@@ -46,6 +46,7 @@ impl PartialEq for Element {
 pub struct Orderer<T> {
     buffer: Vec<T>,
     min_buffer_index: Option<u32>,
+    is_ordered: bool,
     next_expected_index: Option<u32>,
 }
 
@@ -55,6 +56,7 @@ impl<T: PartialOrd + Ord + Orderable> Orderer<T> {
         Orderer {
             buffer: vec![].into(),
             min_buffer_index: None,
+            is_ordered: false,
             next_expected_index: None,
         }
     }
@@ -80,11 +82,8 @@ impl<T: PartialOrd + Ord + Orderable> Orderer<T> {
 
             // The value is the expected one, and is returned by the closure directly
             pipe(value);
-            match self.min_buffer_index {
-                None => (),
-                Some(v) => if v == next {
+            if self.min_buffer_index == Some(next) {
                     self.flush_sequential(&mut pipe);
-                },
             }
         } else if self.next_expected_index.map(|index| index > value.index()).unwrap_or(true)
         {
@@ -95,6 +94,8 @@ impl<T: PartialOrd + Ord + Orderable> Orderer<T> {
 
             let idx = value.index();
             self.buffer.push(value);
+            // We can't ensure that the buffer is ordered after this push.
+            self.is_ordered = false;
             // Modifying `min_buffer_index` if it is lower than the current one.
             if self.min_buffer_index.is_none() || self.min_buffer_index.is_some_and(|v| {v > idx}) {
                 self.min_buffer_index = Some(idx);
@@ -104,13 +105,21 @@ impl<T: PartialOrd + Ord + Orderable> Orderer<T> {
         }
     }
 
+    // Called only by flushes, the sort and remove duplicates is performed only when needed.
+    fn sort_and_remove_duplicates(&mut self) {
+        self.buffer.sort_unstable();
+        self.buffer.dedup();
+        self.is_ordered = true;
+        return
+    }
+
     // Flushes all buffered elements and resets the data structure.
     //
     // The returned elements are sorted.
     pub fn flush(&mut self) -> Vec<T> {
         self.next_expected_index = None;
         self.min_buffer_index = None;
-        self.buffer.sort_unstable();
+        self.sort_and_remove_duplicates();
         self.buffer.drain(..).collect()
     }
 
@@ -122,8 +131,10 @@ impl<T: PartialOrd + Ord + Orderable> Orderer<T> {
     // Flushes the elements in the buffer which are sequential and without gaps, starting at
     // `self.next_expected_index`.
     fn flush_sequential(&mut self, pipe: impl FnMut(T)) {
+        if !self.is_ordered {
         // sort the buffer only when there is at least one sequential value.
-        self.buffer.sort_unstable();
+            self.sort_and_remove_duplicates();
+        }
         // Count how many elements can be drained from the buffer.
         let count = self
             .buffer
