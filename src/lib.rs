@@ -83,7 +83,7 @@ impl<T: PartialOrd + Ord + Orderable> Orderer<T> {
             // The value is the expected one, and is returned by the closure directly
             pipe(value);
             if self.min_buffer_index == Some(next) {
-                    self.flush_sequential(&mut pipe);
+                self.flush_sequential(&mut pipe);
             }
         } else if self.next_expected_index.map(|index| index > value.index()).unwrap_or(true)
         {
@@ -132,7 +132,7 @@ impl<T: PartialOrd + Ord + Orderable> Orderer<T> {
     // `self.next_expected_index`.
     fn flush_sequential(&mut self, pipe: impl FnMut(T)) {
         if !self.is_ordered {
-        // sort the buffer only when there is at least one sequential value.
+            // sort the buffer only when there is at least one sequential value.
             self.sort_and_remove_duplicates();
         }
         // Count how many elements can be drained from the buffer.
@@ -313,26 +313,43 @@ mod test {
         assert!(orderer.next_expected_index.is_none());
     }
 
-    // #[test]
-    // #[should_panic]
-    // fn duplicated_indices() {
-    //     let mut orderer = Orderer::new();
+    #[test]
+    fn test_duplicated_indices() {
+        let mut orderer = Orderer::new();
 
-    //     let element0 = Element {
-    //         time: 0,
-    //         index: 0,
-    //         element: vec![0, 1, 2],
-    //     };
-    //     let element1 = Element {
-    //         time: 10,
-    //         index: 0,
-    //         element: vec![3, 4],
-    //     };
+        let element0 = Element {
+            time: 0,
+            index: 0,
+            element: vec![0, 1, 2],
+        };
+        let element1 = Element {
+            time: 10,
+            index: 0,
+            element: vec![3, 4],
+        };
 
-    //     let mut out = vec![]; orderer.push(element0.clone(), |e| out.push(e));
-    //     assert_eq!(out, vec![element0]); // Returns inmediately
+        let mut out = vec![]; orderer.push(element0.clone(), |e| out.push(e));
+        assert_eq!(out, vec![element0]); // Returns inmediately
 
-    //     let mut out = vec![];
-    //     orderer.push(element1.clone(), |e| out.push(e));
-    // }
+        let mut out = vec![];
+        orderer.push(element1.clone(), |e| out.push(e));
+        assert_eq!(out, vec![]);
+    }
+
+    #[test]
+    fn test_duplicate_in_buffer() {
+        let mut orderer = Orderer::new();
+
+        // The first element is not buffered. The next elements are because they don't match the
+        // next expected index.
+        orderer.push(0, |_| ());
+        orderer.push(5, |_| ());
+        orderer.push(5, |_| ());
+        orderer.push(4, |_| ());
+        orderer.push(3, |_| ());
+        orderer.push(2, |_| ());
+
+        // Assert that flush returns the buffered elements in sorted order.
+        assert_eq!(orderer.flush(), [2, 3, 4, 5]);
+    }
 }
