@@ -18,9 +18,9 @@ If you get stuck please feel free to take some assumptions/simplify the problem,
 
 I have added the `criterion` crate, which provides fairly accurate benchmarks and exactly the data we need: namely, the execution time, which must remain consistent, and the number of calls per second achievable.
 I have 12 benchmarks, 3 data set types, and 4 call rates. The data sets are as follows:
-- `sorted`: easy case, no use of the buffer; the data added to the structure is already sorted.
-- `mostly_sorted`: use case described in the README; chunks of 16 sorted data items arrive, then arrive in reverse order, and so on.
-- `reversed`: worst-case scenario; the data always goes into the buffer before being flushed entirely into the structure.
+- `sorted`: easy case, no use of the buffer, the data added to the structure is already sorted.
+- `mostly_sorted`: use case described in the README, chunks of 16 sorted data items arrive, then arrive in reverse order, and so on.
+- `reversed`: worst-case scenario, the data always goes into the buffer before being flushed entirely into the structure.
 
 Each of these datasets runs the function to be optimized, `push`, 10k, 100k, 1M, and 10M times.
 These values are quite arbitrary, but I chose this range to reach `ms`.
